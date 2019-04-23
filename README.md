@@ -5,6 +5,7 @@ The idea is to create an open source project for an altimeter for skydiving.
 
 ### General
 
+- OTA firmware updates
 - keep logbook on internal storage
   - jump number
   - exit altitude
@@ -14,8 +15,8 @@ The idea is to create an open source project for an altimeter for skydiving.
   - plane
   - location
   - date/time
-
 - sync logbook via WiFi (Wishlist - needs Backend)
+
 
 ### Freefall
 
