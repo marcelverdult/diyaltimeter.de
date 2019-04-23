@@ -51,4 +51,4 @@ The idea is to create an open source project for an altimeter for skydiving.
 
 ## Test setup:
 
-
+![img/testsetup_v0.1.jpg](img/testsetup_v0.1.jpg)
