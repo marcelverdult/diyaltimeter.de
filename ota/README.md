@@ -1,6 +1,6 @@
 # OTA Updates
 
-## Releases
+## Changelog
 
 
 
