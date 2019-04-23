@@ -15,7 +15,7 @@ The idea is to create an open source project for an altimeter for skydiving.
   - plane
   - location
   - date/time
-- sync logbook via WiFi (Wishlist - needs Backend)
+- sync logbook via WiFi (Wishlist - needs a backend)
 
 
 ### Freefall
@@ -42,6 +42,7 @@ The idea is to create an open source project for an altimeter for skydiving.
 
 ## Hardware:
 - ESP32 ( LOLIN D32 V1.0.0 - [Aliexpress](https://www.aliexpress.com/item/WEMOS-LOLIN32-V1-0-0-wifi-bluetooth-board-based-ESP-32-4MB-FLASH/32808551116.html) ~10$
+  - built in LiPo charger
 - 2x BMP280 sensors [Aliexpress](https://www.aliexpress.com/item/I2C-SPI-GY-BMP280-3-3-Digital-Barometric-Pressure-Altitude-Sensor-High-Precision-Atmospheric-Module-for/32651665846.html) (make sure to get the 6 pin version! Else you can't change the I2C address of the second sensor) ~2$
 - 2.42" OLED SPI display [Aliexpress](https://www.aliexpress.com/wholesale?catId=0&SearchText=2.42+oled) ~20$
 - 2.500mAh LiPo battery ~10$
@@ -51,4 +52,4 @@ The idea is to create an open source project for an altimeter for skydiving.
 
 ## Test setup:
 
-
+![img/testsetup_v0.1.jpg](img/testsetup_v0.1.jpg)
