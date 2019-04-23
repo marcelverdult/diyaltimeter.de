@@ -1,6 +1,8 @@
 # diyaltimeter.de
 
-The idea is to create an open source project for an altimeter for skydiving.
+The idea is to create an open source altimeter for skydiving. Currently the hardware is based on standard components connected with a custom pcb. So you can just order the pcb from [JLCPCB](https://www.jlcpcb.com/) and the rest of the parts from [Aliexpress](https://aliexpress.com). The cost should be <50$ depending on the type of housing you choose. 
+
+
 ## Features ( incl. Wishlist)
 
 ### General
@@ -45,6 +47,7 @@ The idea is to create an open source project for an altimeter for skydiving.
 - D3231 RTC module [Aliexpress](https://www.aliexpress.com/wholesale?catId=0&SearchText=d3231+rtc+raspberry) ~1$
 - 3 buttons ~1$
 - [custom PCB ](https://github.com/marcelverdult/diyaltimeter.de/tree/master/kicad)
+- 3D printed housing with wristmount
 
 ## Test setup:
 
