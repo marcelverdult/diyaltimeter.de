@@ -1,11 +1,13 @@
 # diyaltimeter.de
 
-The idea is to create an open source project for an altimeter for skydiving.
+The idea is to create an open source altimeter for skydiving. Currently the hardware is based on standard components connected with a custom pcb. So you can just order the pcb from [JLCPCB](https://www.jlcpcb.com/) and the rest of the parts from [Aliexpress](https://aliexpress.com). The cost should be <50$ depending on the type of housing you choose. 
+
+
 ## Features ( incl. Wishlist)
 
 ### General
 
-- OTA firmware updates
+- [OTA](https://github.com/marcelverdult/diyaltimeter.de/tree/master/ota) firmware updates
 - keep logbook on internal storage
   - jump number
   - exit altitude
@@ -17,28 +19,24 @@ The idea is to create an open source project for an altimeter for skydiving.
   - date/time
 - sync logbook via WiFi (Wishlist - needs a backend)
 
-
-### Freefall
-
-- altitude
-- numbers as big as possible on screen
+### Ground
+- sleep mode to save energy
+- check pressure every xx seconds
+- wake up on button press or climb detection
 
 ### Airplane 
-
 - date/time
 - altitude
 - climb rate
 - time to altitude
 
+### Freefall
+- altitude
+- numbers as big as possible on screen
+
 ### Canopy
 - altitude
 - descent rate
-
-### Ground
-
-- sleep mode to save energy
-- check pressure every xx seconds
-- wake up on button press or climb detection
 
 ## Hardware:
 - ESP32 ( LOLIN D32 V1.0.0 - [Aliexpress](https://www.aliexpress.com/item/WEMOS-LOLIN32-V1-0-0-wifi-bluetooth-board-based-ESP-32-4MB-FLASH/32808551116.html) ~10$
@@ -48,7 +46,8 @@ The idea is to create an open source project for an altimeter for skydiving.
 - 2.500mAh LiPo battery ~10$
 - D3231 RTC module [Aliexpress](https://www.aliexpress.com/wholesale?catId=0&SearchText=d3231+rtc+raspberry) ~1$
 - 3 buttons ~1$
-- custom PCB 
+- [custom PCB ](https://github.com/marcelverdult/diyaltimeter.de/tree/master/kicad)
+- 3D printed housing with wristmount
 
 ## Test setup:
 
