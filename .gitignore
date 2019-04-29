@@ -7,3 +7,6 @@ lib/README
 include/README
 test/README
 kicad/*-bak
+*.kicad_pcb-bak
+*.kicad_pcb-bak
+*.kicad_pcb-bak
