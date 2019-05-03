@@ -44,6 +44,9 @@ Button buttonDown(PIN_BUTTON_DOWN);
 Button buttonEnter(PIN_BUTTON_ENTER);
 
 // define constants
+const float softwareVersion = 0.01;
+const String otaUrl = "https://raw.githubusercontent.com/marcelverdult/diyaltimeter.de/master/ota/";
+
 const unsigned long LONG_PRESS = 1000;   // what counts as long press
 const unsigned long sleepTime = 30;      // after what time to sleep
 const unsigned long sleepForTime = 30;   // sleep for how long
@@ -51,28 +54,20 @@ const int batteryCheckInterval = 300000; // in ms = every 5 min if not in freefa
 const int timeCheckInterval = 1000;
 const int displayUpdateInterval = 5000;
 
-// define variables
+// define global variables
 bool debug = true; // debug mode? enables Serial Messages
-bool demo = false;
-byte mode; // current work mode
+bool demo = false; // demo mode to disable actual altitude check
+byte mode = 3;     // current work mode
 unsigned long currentMillis = 0;
-unsigned long groundTime = 0;
-int altitude1;
-int altitude2;
+
 int currentAltitude;
 
-RtcDateTime now;
 char currentDateTime[20];
 char currentTime[6];
 char currentDate[11];
 
-int vbat;
-float voltage; // battery voltage
 byte batteryLevel;
 
-unsigned long lastAltiCheck = 0;
-unsigned long lastBatteryCheck = 0;
-unsigned long lastTimeCheck = 0;
 unsigned long lastDisplayUpdate = 0;
 unsigned long lastAction = 0;
 
@@ -111,6 +106,10 @@ void readButtons()
 
 void checkAltitude()
 {
+  static unsigned long lastAltiCheck = 0;
+  int altitude1;
+  //int altitude2;
+
   if (!demo)
   {
     if (lastAltiCheck + 200 < currentMillis)
@@ -126,8 +125,18 @@ void checkAltitude()
 
 /* -------------------------------------------------------------------------------------------------------- */
 
+void getTemperature()
+{
+  // TODO
+}
+
+/* -------------------------------------------------------------------------------------------------------- */
+
 void getTime()
 {
+  static unsigned long lastTimeCheck = 0;
+  RtcDateTime now;
+
   if (lastTimeCheck + timeCheckInterval < currentMillis || lastTimeCheck == 0)
   {
     now = rtc.GetDateTime();
@@ -162,7 +171,11 @@ void getTime()
 
 void checkBattery()
 {
-  if (mode > 2)
+  static unsigned long lastBatteryCheck = 0;
+  int vbat;
+  float voltage; // battery voltage
+
+  if (mode > 2 || lastBatteryCheck == 0)
   {
     if (lastBatteryCheck + batteryCheckInterval < currentMillis || lastBatteryCheck == 0)
     {
@@ -221,6 +234,18 @@ void displayBatteryLevel()
   u8g2.print(batteryLevel);
 }
 
+/* -------------------------------------------------------------------------------------------------------- */
+
+void displayHeader()
+{
+  u8g2.setFontDirection(0);
+  u8g2.setFont(u8g2_font_courR08_tf);
+  u8g2.setCursor(0, 8);
+  u8g2.print("diyaltimeter.de");
+  u8g2.drawHLine(0, 10, 128);
+}
+/* -------------------------------------------------------------------------------------------------------- */
+
 // check if altitude changed during sleep
 // yes -> airplaneMode
 // no -> sleep again
@@ -229,8 +254,8 @@ void checkAltitudeAfterWakeup()
   debugMessage("check alti after wakeup");
 
   // REMOVE - Demo start planeMode after first sleep
-  if (debug)
-    currentAltitude = currentAltitude + 60;
+  demo = true;
+  currentAltitude = currentAltitude + 60;
   // REMOVE
 
   debugMessage("current altitude");
@@ -252,41 +277,57 @@ void checkAltitudeAfterWakeup()
 
 void groundMode()
 {
-  if (groundTime == 0)
+  static unsigned long _groundTime = 0;
+
+  if (currentAltitude > 50)
   {
-    groundTime = millis();
+    changeModeTo(MODE_AIRPLANE);
+  }
+
+  if (_groundTime == 0)
+  {
+    _groundTime = millis();
   }
   // 30 seconds without action passed?
-  else if (groundTime + (sleepTime * mS_TO_S_FACTOR) < currentMillis)
+  else if (_groundTime + (sleepTime * mS_TO_S_FACTOR) < currentMillis)
   {
     debugMessage("going to sleep...");
+    u8g2.setPowerSave(1);
+    delay(100);
     esp_deep_sleep_start();
   }
   // check Enter Button to enter Menu
   if (buttonEnter.wasPressed())
   {
-    groundTime = 0;
+    _groundTime = 0;
     changeModeTo(MODE_MENU); // change Mode to menuMode
   }
 
+  // display
   if (lastDisplayUpdate + displayUpdateInterval < currentMillis || lastDisplayUpdate == 0)
-  { // display
+  {
     u8g2.clearBuffer();
-    u8g2.setFontDirection(0);
-    u8g2.setFont(u8g2_font_courR08_tf);
-    u8g2.setCursor(0, 8);
-    u8g2.print("8==========D");
-    u8g2.drawHLine(0, 10, 128);
+    displayHeader();
+    displayBatteryLevel();
 
+    u8g2.setFontDirection(0);
     u8g2.setFont(u8g2_font_courB24_tn);
-    u8g2.setCursor(0, 34);
+    u8g2.setCursor(0, 35);
     u8g2.print(currentTime);
 
     u8g2.setFont(u8g2_font_courB10_tn);
-    u8g2.setCursor(0, 46);
+    u8g2.setCursor(0, 47);
     u8g2.print(currentDate);
 
-    displayBatteryLevel();
+    u8g2.setFont(u8g2_font_courR08_tf);
+    // u8g2.setCursor(0, 60);
+    // u8g2.print("next Jump:");
+    // u8g2.print("1420");
+
+    int temp = roundf(pressureSensor1.readTemperature());
+    u8g2.setCursor(90, 60);
+    u8g2.print(temp);
+    u8g2.print("°C");
 
     u8g2.sendBuffer();
     lastDisplayUpdate = currentMillis;
@@ -297,19 +338,69 @@ void groundMode()
 
 void airplaneMode()
 {
-  // check alti
-  // calculate climb speed
-  // calculate time to 4000
-  // display stuff
-  // check if climb is negativ -> switch to freefallMode
+  static int _climbRate = 0;
+  static unsigned long _lastAltitudeUpdate = currentMillis;
+  static int _last_Altitude;
+  static unsigned long _timeDiff = 0;
+  static int _altitudeDiff = 0;
+  static int _timeToAltitude = 0;
+  static unsigned long _lastDisplayUpdate = currentMillis;
+
+  if (_lastAltitudeUpdate == 0 || _lastAltitudeUpdate + 1000 < currentMillis)
+  {
+    _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
+    _altitudeDiff = currentAltitude - _last_Altitude;
+    _climbRate = _altitudeDiff / _timeDiff;
+    _timeToAltitude = (4000 - currentAltitude) / _climbRate;
+  }
+
+  // REMOVE - Demo only!
+  if (currentAltitude > 4000)
+  {
+    changeModeTo(MODE_FREEFALL);
+  }
   if (lastAction == 0)
   {
     lastAction = currentMillis;
   }
-  else if (lastAction + 20000 < currentMillis)
+  else if (lastAction + 1000 < currentMillis)
   {
-    debugMessage("DEMO: arrived at 4000m exit no -> freefallMode");
-    changeModeTo(MODE_FREEFALL);
+    currentAltitude = currentAltitude + random(30, 60);
+    debugMessage("Airplane Mode. Altitude:");
+    debugMessage((String)currentAltitude);
+    lastAction = currentMillis;
+  }
+  // REMOVE
+
+  // display
+  if (_lastDisplayUpdate + 1000 < currentMillis || _lastDisplayUpdate == 0)
+  {
+    u8g2.clearBuffer();
+    displayHeader();
+    displayBatteryLevel();
+
+    u8g2.setFontDirection(0);
+    u8g2.setFont(u8g2_font_courB24_tr);
+    u8g2.setCursor(0, 35);
+    u8g2.print(currentAltitude);
+    u8g2.print("m");
+    u8g2.setFont(u8g2_font_courR08_tr);
+    if (_timeToAltitude > 0)
+    {
+      u8g2.setCursor(0, 47);
+      u8g2.print("4km in ");
+      u8g2.print((int)_timeToAltitude / 60);
+      u8g2.print("min ");
+      u8g2.print((int)_timeToAltitude % 60);
+      u8g2.print("sec");
+    }
+    u8g2.setCursor(0, 60);
+    u8g2.print("climb rate: ");
+    u8g2.print((int)_climbRate * 60);
+    u8g2.print("m/m");
+
+    u8g2.sendBuffer();
+    _lastDisplayUpdate = currentMillis;
   }
 };
 
@@ -380,29 +471,25 @@ void setup()
   {
     checkAltitudeAfterWakeup();
   }
-  else
-  {
-    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 
-    debugMessage("Startdruck:");
-    defaultPressure1 = pressureSensor1.readPressure() / 100;
-    // defaultPressure2 = pressureSensor2.readPressure() / 100;
-    debugMessage((String)defaultPressure1);
-    //debugMessage((String)defaultPressure2);
-    debugMessage("Starthöhe:");
-    checkAltitude();
-    debugMessage((String)currentAltitude);
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 
-    buttonUp.begin();
-    buttonDown.begin();
-    buttonEnter.begin();
+  debugMessage("Startdruck:");
+  defaultPressure1 = pressureSensor1.readPressure() / 100;
+  // defaultPressure2 = pressureSensor2.readPressure() / 100;
+  debugMessage((String)defaultPressure1);
+  //debugMessage((String)defaultPressure2);
+  debugMessage("Starthöhe:");
+  checkAltitude();
+  debugMessage((String)currentAltitude);
 
-    u8g2.begin();
-    u8g2.enableUTF8Print();
-    u8g2.setFlipMode(1);
+  buttonUp.begin();
+  buttonDown.begin();
+  buttonEnter.begin();
 
-    mode = MODE_GROUND;
-  }
+  u8g2.begin();
+  u8g2.enableUTF8Print();
+  u8g2.setFlipMode(1);
 }
 
 /* -------------------------------------------------------------------------------------------------------- */
