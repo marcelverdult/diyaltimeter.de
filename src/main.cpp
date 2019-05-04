@@ -49,7 +49,7 @@ const String otaUrl = "https://raw.githubusercontent.com/marcelverdult/diyaltime
 
 const unsigned long LONG_PRESS = 1000;   // what counts as long press
 const unsigned long sleepTime = 30;      // after what time to sleep
-const unsigned long sleepForTime = 30;   // sleep for how long
+const unsigned long sleepForTime = 10;   // sleep for how long
 const int batteryCheckInterval = 300000; // in ms = every 5 min if not in freefall/canopy mode
 const int timeCheckInterval = 1000;
 const int displayUpdateInterval = 5000;
@@ -72,7 +72,6 @@ unsigned long lastDisplayUpdate = 0;
 unsigned long lastAction = 0;
 
 // variables to keep during sleep
-RTC_DATA_ATTR int altitudeBeforeSleep;
 RTC_DATA_ATTR float defaultPressure1;
 RTC_DATA_ATTR float defaultPressure2;
 
@@ -110,17 +109,17 @@ void checkAltitude()
   int altitude1;
   //int altitude2;
 
-  if (!demo)
+  // if (!demo)
+  // {
+  if (lastAltiCheck + 200 < currentMillis)
   {
-    if (lastAltiCheck + 200 < currentMillis)
-    {
-      altitude1 = pressureSensor1.readAltitude(defaultPressure1);
-      //altitude2 = pressureSensor2.readAltitude(defaultPressure2);
-      //currentAltitude = ( altitude1 + altitude2 ) / 2;
-      currentAltitude = altitude1;
-      lastAltiCheck = currentMillis;
-    }
+    altitude1 = pressureSensor1.readAltitude(defaultPressure1);
+    //altitude2 = pressureSensor2.readAltitude(defaultPressure2);
+    //currentAltitude = ( altitude1 + altitude2 ) / 2;
+    currentAltitude = altitude1;
+    lastAltiCheck = currentMillis;
   }
+  // }
 };
 
 /* -------------------------------------------------------------------------------------------------------- */
@@ -171,19 +170,19 @@ void getTime()
 
 void checkBattery()
 {
-  static unsigned long lastBatteryCheck = 0;
+  static unsigned long _lastBatteryCheck = 0;
   int vbat;
   float voltage; // battery voltage
 
-  if (mode > 2 || lastBatteryCheck == 0)
+  if (mode > 2 || _lastBatteryCheck == 0)
   {
-    if (lastBatteryCheck + batteryCheckInterval < currentMillis || lastBatteryCheck == 0)
+    if (_lastBatteryCheck + batteryCheckInterval < currentMillis || _lastBatteryCheck == 0)
     {
       vbat = analogRead(35);
       voltage = 7.445 * vbat / 4096.0;
       debugMessage("Battery voltage");
       debugMessage((String)voltage);
-      lastBatteryCheck = currentMillis;
+      _lastBatteryCheck = currentMillis;
 
       if (voltage > 4.0)
       {
@@ -218,7 +217,7 @@ void checkBattery()
 // change to newMode
 void changeModeTo(byte newMode)
 {
-  lastAction = 0;
+  lastAction = currentMillis;
   debugMessage("switching to mode:" + (String)newMode);
   mode = newMode; // change to menuMode
 };
@@ -236,16 +235,6 @@ void displayBatteryLevel()
 
 /* -------------------------------------------------------------------------------------------------------- */
 
-void displayHeader()
-{
-  u8g2.setFontDirection(0);
-  u8g2.setFont(u8g2_font_courR08_tf);
-  u8g2.setCursor(0, 8);
-  u8g2.print("diyaltimeter.de");
-  u8g2.drawHLine(0, 10, 128);
-}
-/* -------------------------------------------------------------------------------------------------------- */
-
 // check if altitude changed during sleep
 // yes -> airplaneMode
 // no -> sleep again
@@ -253,15 +242,15 @@ void checkAltitudeAfterWakeup()
 {
   debugMessage("check alti after wakeup");
 
-  // REMOVE - Demo start planeMode after first sleep
-  demo = true;
-  currentAltitude = currentAltitude + 60;
-  // REMOVE
+  // // REMOVE - Demo start planeMode after first sleep
+  // demo = true;
+  // currentAltitude = currentAltitude + 60;
+  // // REMOVE
 
   debugMessage("current altitude");
   debugMessage((String)currentAltitude);
 
-  if (currentAltitude > altitudeBeforeSleep + 50)
+  if (currentAltitude > 50)
   {
     debugMessage("Altitude change! Switching to planeMode");
     changeModeTo(MODE_AIRPLANE);
@@ -307,7 +296,12 @@ void groundMode()
   if (lastDisplayUpdate + displayUpdateInterval < currentMillis || lastDisplayUpdate == 0)
   {
     u8g2.clearBuffer();
-    displayHeader();
+    u8g2.setFontDirection(0);
+    u8g2.setFont(u8g2_font_courR08_tf);
+    u8g2.setCursor(0, 8);
+    u8g2.print("diyaltimeter.de");
+    u8g2.drawHLine(0, 10, 128);
+
     displayBatteryLevel();
 
     u8g2.setFontDirection(0);
@@ -320,9 +314,6 @@ void groundMode()
     u8g2.print(currentDate);
 
     u8g2.setFont(u8g2_font_courR08_tf);
-    // u8g2.setCursor(0, 60);
-    // u8g2.print("next Jump:");
-    // u8g2.print("1420");
 
     int temp = roundf(pressureSensor1.readTemperature());
     u8g2.setCursor(90, 60);
@@ -352,31 +343,45 @@ void airplaneMode()
     _altitudeDiff = currentAltitude - _last_Altitude;
     _climbRate = _altitudeDiff / _timeDiff;
     _timeToAltitude = (4000 - currentAltitude) / _climbRate;
+    _lastAltitudeUpdate = currentMillis;
+    _last_Altitude = currentAltitude;
   }
 
-  // REMOVE - Demo only!
-  if (currentAltitude > 4000)
+  if (_climbRate < -5)
   {
     changeModeTo(MODE_FREEFALL);
   }
-  if (lastAction == 0)
-  {
-    lastAction = currentMillis;
-  }
-  else if (lastAction + 1000 < currentMillis)
-  {
-    currentAltitude = currentAltitude + random(30, 60);
-    debugMessage("Airplane Mode. Altitude:");
-    debugMessage((String)currentAltitude);
-    lastAction = currentMillis;
-  }
-  // REMOVE
+
+  // // REMOVE - Demo only!
+  // if (currentAltitude > 4000)
+  // {
+  //   changeModeTo(MODE_FREEFALL);
+  // }
+  // if (lastAction == 0)
+  // {
+  //   lastAction = currentMillis;
+  // }
+  // else if (lastAction + 1000 < currentMillis)
+  // {
+  //   currentAltitude = currentAltitude + random(60, 100);
+  //   debugMessage("Airplane Mode. Altitude:");
+  //   debugMessage((String)currentAltitude);
+  //   lastAction = currentMillis;
+  // }
+  // // REMOVE
 
   // display
   if (_lastDisplayUpdate + 1000 < currentMillis || _lastDisplayUpdate == 0)
   {
     u8g2.clearBuffer();
-    displayHeader();
+    u8g2.setFontDirection(0);
+    u8g2.setFont(u8g2_font_courR08_tf);
+    u8g2.setCursor(0, 8);
+    u8g2.print(currentDate);
+    u8g2.print(" ");
+    u8g2.print(currentTime);
+    u8g2.drawHLine(0, 10, 128);
+
     displayBatteryLevel();
 
     u8g2.setFontDirection(0);
@@ -408,29 +413,127 @@ void airplaneMode()
 
 void freefallMode()
 {
-  if (lastAction == 0)
+  static int _lastAction = 0;
+  // // REMOVE
+  // if (_lastAction == 0)
+  // {
+  //   _lastAction = currentMillis;
+  // }
+  // else if (_lastAction + 500 < currentMillis)
+  // {
+  //   if (currentAltitude < 50)
+  //   {
+  //     debugMessage("DEMO: freefall ended -> canopyMode");
+  //     // changeModeTo(MODE_CANOPY);
+  //   }
+  //   else if (currentAltitude < 1200)
+  //   {
+  //     currentAltitude = currentAltitude - random(6, 12);
+  //   }
+  //   else
+  //   {
+  //     currentAltitude = currentAltitude - random(25, 55);
+  //   }
+  //   _lastAction = currentMillis;
+  // }
+  // // REMOVE
+
+  static int _fallRate = 50;
+  static unsigned long _lastAltitudeUpdate = currentMillis;
+  static int _last_Altitude = currentAltitude;
+  static unsigned long _timeDiff = 0;
+  static int _altitudeDiff = 0;
+  static unsigned long _lastDisplayUpdate = 0;
+
+  if (_lastAltitudeUpdate + 1000 < currentMillis)
   {
-    lastAction = currentMillis;
+    _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
+    _altitudeDiff = _last_Altitude - currentAltitude;
+    _fallRate = _altitudeDiff / _timeDiff;
+    _lastAltitudeUpdate = currentMillis;
+    _last_Altitude = currentAltitude;
+    debugMessage("Fallrate:");
+    debugMessage((String)_fallRate);
   }
-  else if (lastAction + 20000 < currentMillis)
+  if (_fallRate < 20)
   {
-    debugMessage("DEMO: freefall ended -> canopyMode");
     changeModeTo(MODE_CANOPY);
   }
-};
 
+  // display
+  if (_lastDisplayUpdate + 500 < currentMillis || _lastDisplayUpdate == 0)
+  {
+    u8g2.clearBuffer();
+
+    u8g2.setFontDirection(0);
+    u8g2.setFont(u8g2_font_7Segments_26x42_mn);
+    u8g2.setCursor(0, 53);
+    u8g2.print(currentAltitude);
+    u8g2.sendBuffer();
+
+    _lastDisplayUpdate = currentMillis;
+  }
+}
 /* -------------------------------------------------------------------------------------------------------- */
 
 void canopyMode()
 {
-  if (lastAction == 0)
+  // static int _lastAction = 0;
+  // // REMOVE
+  // if (_lastAction == 0)
+  // {
+  //   _lastAction = currentMillis;
+  // }
+  // else if (_lastAction + 1000 < currentMillis)
+  // {
+  //   if (currentAltitude < 5)
+  //   {
+  //     debugMessage("DEMO: canopy ended -> groundMode");
+  //     changeModeTo(MODE_GROUND);
+  //   }
+  //   else
+  //   {
+  //     currentAltitude = currentAltitude - random(6, 12);
+  //   }
+  //   _lastAction = currentMillis;
+  // }
+  // // REMOVE
+
+  static int _fallRate = 0;
+  static unsigned long _lastAltitudeUpdate = currentMillis;
+  static int _lastAltitude = currentAltitude;
+  static unsigned long _timeDiff = 0;
+  static int _altitudeDiff = 0;
+  static unsigned long _lastDisplayUpdate = 0;
+
+  if (_lastAltitudeUpdate + 1000 < currentMillis)
   {
-    lastAction = currentMillis;
+    _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
+    _altitudeDiff = _lastAltitude - currentAltitude;
+    _fallRate = _altitudeDiff / _timeDiff;
+    _lastAltitudeUpdate = currentMillis;
+    _lastAltitude = currentAltitude;
+    debugMessage("Fallrate:");
+    debugMessage((String)_fallRate);
   }
-  else if (lastAction + 20000 < currentMillis)
+
+  // display
+  if (_lastDisplayUpdate + 500 < currentMillis || _lastDisplayUpdate == 0)
   {
-    debugMessage("DEMO: landed! -> groundMode");
-    changeModeTo(MODE_GROUND);
+    u8g2.clearBuffer();
+
+    u8g2.setFontDirection(0);
+    u8g2.setFont(u8g2_font_7Segments_26x42_mn);
+    u8g2.setCursor(0, 42);
+    u8g2.print(currentAltitude);
+
+    u8g2.setFont(u8g2_font_courR08_tf);
+    u8g2.setCursor(0, 60);
+    u8g2.print((String)_fallRate);
+    u8g2.print(" m/s");
+    u8g2.sendBuffer();
+
+    _lastDisplayUpdate = currentMillis;
   }
 };
 
