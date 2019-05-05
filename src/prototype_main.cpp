@@ -118,17 +118,18 @@ void getClimbRate()
   static int _climbRate = 0;
   static unsigned long _lastAltitudeUpdate = currentMillis;
   static int _last_Altitude;
-  static unsigned long _timeDiff = 0;
+  static unsigned long _timeDiff = 1;
   static int _altitudeDiff = 0;
-  static int _timeToAltitude = 0;
-  static unsigned long _lastDisplayUpdate = currentMillis;
 
-  if (_lastAltitudeUpdate == 0 || _lastAltitudeUpdate + 500 < currentMillis)
+  if (_lastAltitudeUpdate == 0 || _lastAltitudeUpdate + 1000 < currentMillis)
   {
     _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
+    if(_timeDiff == 0)
+    {
+      _timeDiff = 1;
+    }
     _altitudeDiff = currentAltitude - _last_Altitude;
     _climbRate = _altitudeDiff / _timeDiff;
-    _timeToAltitude = (4000 - currentAltitude) / _climbRate;
     _lastAltitudeUpdate = currentMillis;
     _last_Altitude = currentAltitude;
   }
@@ -152,18 +153,14 @@ void checkAltitude()
   int altitude1;
   int altitude2;
 
-  // if (!demo)
-  // {
   if (lastAltiCheck + 200 < currentMillis || lastAltiCheck == 0)
   {
     altitude1 = pressureSensor1.readAltitude(defaultPressure1);
     altitude2 = pressureSensor2.readAltitude(defaultPressure2);
     currentAltitude = (altitude1 + altitude2) / 2;
     currentAltitude = currentAltitude / feetFactor;
-    //currentAltitude = altitude1;
     lastAltiCheck = currentMillis;
   }
-  // }
   getClimbRate();
 };
 
@@ -264,7 +261,7 @@ void changeModeTo(byte newMode)
 {
   lastAction = currentMillis;
   debugMessage("switching to mode:" + (String)newMode);
-  mode = newMode; // change to menuMode
+  mode = newMode;
 };
 
 /* -------------------------------------------------------------------------------------------------------- */
@@ -331,7 +328,7 @@ void groundMode()
 {
   static unsigned long _groundTime = 0;
 
-  if (currentAltitude > 50)
+  if ((feet && currentAltitude > 150) || (!feet && currentAltitude > 50))
   {
     _groundTime = 0;
     changeModeTo(MODE_AIRPLANE);
@@ -363,7 +360,7 @@ void groundMode()
     u8g2.setFontDirection(0);
     u8g2.setFont(u8g2_font_courR08_tf);
     u8g2.setCursor(0, 8);
-    u8g2.print("diyaltimeter.de");
+    u8g2.print("8=========D");
     u8g2.drawHLine(0, 10, 128);
 
     displayBatteryLevel();
@@ -387,9 +384,9 @@ void groundMode()
       u8g2.print("meter");
     }
     int temp = roundf(pressureSensor1.readTemperature());
-    u8g2.setCursor(90, 60);
-    u8g2.print(temp);
-    u8g2.print("°C");
+    u8g2.setCursor(70, 60);
+    u8g2.print(defaultPressure1);
+    u8g2.print("Pa");
 
     u8g2.sendBuffer();
     lastDisplayUpdate = currentMillis;
@@ -401,20 +398,11 @@ void groundMode()
 void airplaneMode()
 {
   static int _climbRate = 0;
-  // static unsigned long _lastAltitudeUpdate = currentMillis;
-  // static int _last_Altitude;
-  // static unsigned long _timeDiff = 0;
-  // static int _altitudeDiff = 0;
   static int _timeToAltitude = 0;
   static unsigned long _lastDisplayUpdate = currentMillis;
 
   _climbRate = currentClimbRate;
 
-  // if (_lastAltitudeUpdate == 0 || _lastAltitudeUpdate + 1000 < currentMillis)
-  // {
-  //   _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
-  //   _altitudeDiff = currentAltitude - _last_Altitude;
-  //   _climbRate = _altitudeDiff / _timeDiff;
   if (feet)
   {
     _timeToAltitude = (13500 - currentAltitude) / _climbRate;
@@ -424,34 +412,11 @@ void airplaneMode()
     _timeToAltitude = (4000 - currentAltitude) / _climbRate;
   }
 
-  // _lastAltitudeUpdate = currentMillis;
-  //   _last_Altitude = currentAltitude;
-  // }
-
-  if ((feet == true && _climbRate < -15) || (feet == false && _climbRate < -5))
+  if ((feet && _climbRate < -15) || (!feet && _climbRate < -5))
   {
     changeModeTo(MODE_FREEFALL);
   }
 
-  // // REMOVE - Demo only!
-  // if (currentAltitude > 4000)
-  // {
-  //   changeModeTo(MODE_FREEFALL);
-  // }
-  // if (lastAction == 0)
-  // {
-  //   lastAction = currentMillis;
-  // }
-  // else if (lastAction + 1000 < currentMillis)
-  // {
-  //   currentAltitude = currentAltitude + random(60, 100);
-  //   debugMessage("Airplane Mode. Altitude:");
-  //   debugMessage((String)currentAltitude);
-  //   lastAction = currentMillis;
-  // }
-  // // REMOVE
-
-  // display
   if (_lastDisplayUpdate + 1000 < currentMillis || _lastDisplayUpdate == 0)
   {
     u8g2.clearBuffer();
@@ -509,82 +474,30 @@ void airplaneMode()
 
 void freefallMode()
 {
-  // static int _fallRate = 50;
-  // static unsigned long _lastAltitudeUpdate = currentMillis;
-  // static int _last_Altitude = currentAltitude;
-  // static unsigned long _timeDiff = 0;
-  // static int _altitudeDiff = 0;
   static unsigned long _lastDisplayUpdate = 0;
 
-  // if (_lastAltitudeUpdate + 1000 < currentMillis)
-  // {
-  //   _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
-  //   _altitudeDiff = _last_Altitude - currentAltitude;
-  //   _fallRate = _altitudeDiff / _timeDiff;
-  //   _lastAltitudeUpdate = currentMillis;
-  //   _last_Altitude = currentAltitude;
-  //   debugMessage("Fallrate:");
-  //   debugMessage((String)_fallRate);
-  // }
-
-  // display
   if (_lastDisplayUpdate + 500 < currentMillis || _lastDisplayUpdate == 0)
   {
     u8g2.clearBuffer();
-
     u8g2.setFontDirection(0);
     u8g2.setFont(u8g2_font_7Segments_26x42_mn);
     u8g2.setCursor(0, 53);
     u8g2.print(currentAltitude - currentAltitude % 50);
     u8g2.sendBuffer();
-
     _lastDisplayUpdate = currentMillis;
+  }
+
+  if((feet && currentClimbRate < 60) || (!feet && currentClimbRate < 20))
+  {
+    changeModeTo(MODE_CANOPY);
   }
 }
 /* -------------------------------------------------------------------------------------------------------- */
 
 void canopyMode()
 {
-  // static int _lastAction = 0;
-  // // REMOVE
-  // if (_lastAction == 0)
-  // {
-  //   _lastAction = currentMillis;
-  // }
-  // else if (_lastAction + 1000 < currentMillis)
-  // {
-  //   if (currentAltitude < 5)
-  //   {
-  //     debugMessage("DEMO: canopy ended -> groundMode");
-  //     changeModeTo(MODE_GROUND);
-  //   }
-  //   else
-  //   {
-  //     currentAltitude = currentAltitude - random(6, 12);
-  //   }
-  //   _lastAction = currentMillis;
-  // }
-  // // REMOVE
-
-  static int _fallRate = 0;
-  static unsigned long _lastAltitudeUpdate = currentMillis;
-  static int _lastAltitude = currentAltitude;
-  static unsigned long _timeDiff = 0;
-  static int _altitudeDiff = 0;
   static unsigned long _lastDisplayUpdate = 0;
 
-  if (_lastAltitudeUpdate + 1000 < currentMillis)
-  {
-    _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
-    _altitudeDiff = currentAltitude - _lastAltitude;
-    _fallRate = _altitudeDiff / _timeDiff;
-    _lastAltitudeUpdate = currentMillis;
-    _lastAltitude = currentAltitude;
-    debugMessage("Fallrate:");
-    debugMessage((String)_fallRate);
-  }
-
-  // display
   if (_lastDisplayUpdate + 500 < currentMillis || _lastDisplayUpdate == 0)
   {
     u8g2.clearBuffer();
@@ -596,7 +509,7 @@ void canopyMode()
 
     u8g2.setFont(u8g2_font_courR08_tf);
     u8g2.setCursor(0, 60);
-    u8g2.print((String)_fallRate);
+    u8g2.print((String)currentClimbRate);
     if (feet)
     {
       u8g2.print("ft/s");
@@ -611,7 +524,7 @@ void canopyMode()
     _lastDisplayUpdate = currentMillis;
   }
 
-  if (currentAltitude < 5)
+  if ((feet && currentAltitude < 5) || (!feet && currentAltitude < 15))
   {
     debugMessage("canopy ended -> groundMode");
     changeModeTo(MODE_GROUND);
