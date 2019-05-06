@@ -52,24 +52,22 @@ const unsigned long sleepTime = 30;      // after what time to sleep
 const unsigned long sleepForTime = 10;   // sleep for how long
 const int batteryCheckInterval = 300000; // in ms = every 5 min if not in freefall/canopy mode
 const int timeCheckInterval = 1000;
-const int displayUpdateInterval = 5000;
 
 // define global variables
 bool debug = true; // debug mode? enables Serial Messages
 bool demo = false; // demo mode to disable actual altitude check
 byte mode = 3;     // current work mode
+byte lastMode = 254;
 unsigned long currentMillis = 0;
 
 int currentAltitude;
+int currentAltitudeChangeRate;
 
 char currentDateTime[20];
 char currentTime[6];
 char currentDate[11];
 
 byte batteryLevel;
-
-unsigned long lastDisplayUpdate = 0;
-unsigned long lastAction = 0;
 
 // variables to keep during sleep
 RTC_DATA_ATTR float defaultPressure1;
@@ -101,33 +99,71 @@ void readButtons()
 
 /* -------------------------------------------------------------------------------------------------------- */
 
+void checkAltitudeChangeRate()
+{
+  static int _changeRate[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  static unsigned long _lastAltitudeUpdate = currentMillis;
+  static int _last_Altitude;
+  static unsigned long _timeDiff = 1;
+  static int _altitudeDiff = 0;
+  static int _counter = 0;
+  int _currentAltitudeChangeRate = 0;
+
+  // if (_lastAltitudeUpdate == 0 || _lastAltitudeUpdate + 1000 < currentMillis)
+  // {
+  _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
+  // avoid division by zero errors
+  if (_timeDiff == 0)
+  {
+    _timeDiff = 1;
+  }
+  _altitudeDiff = currentAltitude - _last_Altitude;
+  _changeRate[_counter] = _altitudeDiff / _timeDiff;
+  _lastAltitudeUpdate = currentMillis;
+  _last_Altitude = currentAltitude;
+  if (_counter == 9)
+  {
+    _counter = 0;
+  }
+  else
+  {
+    _counter++;
+  }
+
+  for (int i = 0; i < 9; i++)
+  {
+    _currentAltitudeChangeRate = _currentAltitudeChangeRate + _changeRate[i];
+  }
+
+  currentAltitudeChangeRate = _currentAltitudeChangeRate / 10;
+  // }
+
+  // avoid division by zero errors
+  if (currentAltitudeChangeRate == 0)
+  {
+    currentAltitudeChangeRate = 1;
+  }
+}
+
+/* -------------------------------------------------------------------------------------------------------- */
+
 // Altitude check - filter - smoothen
 
 void checkAltitude()
 {
   static unsigned long lastAltiCheck = 0;
   int altitude1;
-  //int altitude2;
+  int altitude2;
 
-  // if (!demo)
-  // {
   if (lastAltiCheck + 200 < currentMillis)
   {
     altitude1 = pressureSensor1.readAltitude(defaultPressure1);
-    //altitude2 = pressureSensor2.readAltitude(defaultPressure2);
-    //currentAltitude = ( altitude1 + altitude2 ) / 2;
-    currentAltitude = altitude1;
+    altitude2 = pressureSensor2.readAltitude(defaultPressure2);
+    currentAltitude = (altitude1 + altitude2) / 2;
     lastAltiCheck = currentMillis;
+    checkAltitudeChangeRate();
   }
-  // }
 };
-
-/* -------------------------------------------------------------------------------------------------------- */
-
-void getTemperature()
-{
-  // TODO
-}
 
 /* -------------------------------------------------------------------------------------------------------- */
 
@@ -217,9 +253,9 @@ void checkBattery()
 // change to newMode
 void changeModeTo(byte newMode)
 {
-  lastAction = currentMillis;
+  lastMode = mode;
   debugMessage("switching to mode:" + (String)newMode);
-  mode = newMode; // change to menuMode
+  mode = newMode;
 };
 
 /* -------------------------------------------------------------------------------------------------------- */
@@ -241,12 +277,6 @@ void displayBatteryLevel()
 void checkAltitudeAfterWakeup()
 {
   debugMessage("check alti after wakeup");
-
-  // // REMOVE - Demo start planeMode after first sleep
-  // demo = true;
-  // currentAltitude = currentAltitude + 60;
-  // // REMOVE
-
   debugMessage("current altitude");
   debugMessage((String)currentAltitude);
 
@@ -266,17 +296,27 @@ void checkAltitudeAfterWakeup()
 
 void groundMode()
 {
-  static unsigned long _groundTime = 0;
+  static unsigned long _groundTime = currentMillis;
+  static unsigned long _lastDisplayUpdate = 0;
 
+  if (mode != lastMode)
+  {
+    _groundTime = currentMillis;
+    lastMode = MODE_GROUND;
+  }
+  else
+  {
+    // check Enter Button to enter Menu
+    if (buttonEnter.pressedFor(1000))
+    {
+      changeModeTo(MODE_MENU); // change Mode to menuMode
+    }
+  }
   if (currentAltitude > 50)
   {
     changeModeTo(MODE_AIRPLANE);
   }
 
-  if (_groundTime == 0)
-  {
-    _groundTime = millis();
-  }
   // 30 seconds without action passed?
   else if (_groundTime + (sleepTime * mS_TO_S_FACTOR) < currentMillis)
   {
@@ -285,15 +325,9 @@ void groundMode()
     delay(100);
     esp_deep_sleep_start();
   }
-  // check Enter Button to enter Menu
-  if (buttonEnter.wasPressed())
-  {
-    _groundTime = 0;
-    changeModeTo(MODE_MENU); // change Mode to menuMode
-  }
 
   // display
-  if (lastDisplayUpdate + displayUpdateInterval < currentMillis || lastDisplayUpdate == 0)
+  if (_lastDisplayUpdate + 5000 < currentMillis || _lastDisplayUpdate == 0)
   {
     u8g2.clearBuffer();
     u8g2.setFontDirection(0);
@@ -321,7 +355,7 @@ void groundMode()
     u8g2.print("°C");
 
     u8g2.sendBuffer();
-    lastDisplayUpdate = currentMillis;
+    _lastDisplayUpdate = currentMillis;
   }
 };
 
@@ -329,46 +363,15 @@ void groundMode()
 
 void airplaneMode()
 {
-  static int _climbRate = 0;
-  static unsigned long _lastAltitudeUpdate = currentMillis;
-  static int _last_Altitude;
-  static unsigned long _timeDiff = 0;
-  static int _altitudeDiff = 0;
   static int _timeToAltitude = 0;
   static unsigned long _lastDisplayUpdate = currentMillis;
 
-  if (_lastAltitudeUpdate == 0 || _lastAltitudeUpdate + 1000 < currentMillis)
-  {
-    _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
-    _altitudeDiff = currentAltitude - _last_Altitude;
-    _climbRate = _altitudeDiff / _timeDiff;
-    _timeToAltitude = (4000 - currentAltitude) / _climbRate;
-    _lastAltitudeUpdate = currentMillis;
-    _last_Altitude = currentAltitude;
-  }
+  _timeToAltitude = (4000 - currentAltitude) / currentAltitudeChangeRate;
 
-  if (_climbRate < -5)
+  if (currentAltitudeChangeRate < -15)
   {
     changeModeTo(MODE_FREEFALL);
   }
-
-  // // REMOVE - Demo only!
-  // if (currentAltitude > 4000)
-  // {
-  //   changeModeTo(MODE_FREEFALL);
-  // }
-  // if (lastAction == 0)
-  // {
-  //   lastAction = currentMillis;
-  // }
-  // else if (lastAction + 1000 < currentMillis)
-  // {
-  //   currentAltitude = currentAltitude + random(60, 100);
-  //   debugMessage("Airplane Mode. Altitude:");
-  //   debugMessage((String)currentAltitude);
-  //   lastAction = currentMillis;
-  // }
-  // // REMOVE
 
   // display
   if (_lastDisplayUpdate + 1000 < currentMillis || _lastDisplayUpdate == 0)
@@ -401,8 +404,8 @@ void airplaneMode()
     }
     u8g2.setCursor(0, 60);
     u8g2.print("climb rate: ");
-    u8g2.print((int)_climbRate * 60);
-    u8g2.print("m/m");
+    u8g2.print(currentAltitudeChangeRate);
+    u8g2.print("m/s");
 
     u8g2.sendBuffer();
     _lastDisplayUpdate = currentMillis;
@@ -413,49 +416,9 @@ void airplaneMode()
 
 void freefallMode()
 {
-  static int _lastAction = 0;
-  // // REMOVE
-  // if (_lastAction == 0)
-  // {
-  //   _lastAction = currentMillis;
-  // }
-  // else if (_lastAction + 500 < currentMillis)
-  // {
-  //   if (currentAltitude < 50)
-  //   {
-  //     debugMessage("DEMO: freefall ended -> canopyMode");
-  //     // changeModeTo(MODE_CANOPY);
-  //   }
-  //   else if (currentAltitude < 1200)
-  //   {
-  //     currentAltitude = currentAltitude - random(6, 12);
-  //   }
-  //   else
-  //   {
-  //     currentAltitude = currentAltitude - random(25, 55);
-  //   }
-  //   _lastAction = currentMillis;
-  // }
-  // // REMOVE
-
-  static int _fallRate = 50;
-  static unsigned long _lastAltitudeUpdate = currentMillis;
-  static int _last_Altitude = currentAltitude;
-  static unsigned long _timeDiff = 0;
-  static int _altitudeDiff = 0;
   static unsigned long _lastDisplayUpdate = 0;
 
-  if (_lastAltitudeUpdate + 1000 < currentMillis)
-  {
-    _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
-    _altitudeDiff = _last_Altitude - currentAltitude;
-    _fallRate = _altitudeDiff / _timeDiff;
-    _lastAltitudeUpdate = currentMillis;
-    _last_Altitude = currentAltitude;
-    debugMessage("Fallrate:");
-    debugMessage((String)_fallRate);
-  }
-  if (_fallRate < 20)
+  if (currentAltitudeChangeRate < 15)
   {
     changeModeTo(MODE_CANOPY);
   }
@@ -464,13 +427,11 @@ void freefallMode()
   if (_lastDisplayUpdate + 500 < currentMillis || _lastDisplayUpdate == 0)
   {
     u8g2.clearBuffer();
-
     u8g2.setFontDirection(0);
-    u8g2.setFont(u8g2_font_7Segments_26x42_mn);
-    u8g2.setCursor(0, 53);
+    u8g2.setFont(u8g2_font_logisoso62_tn);
+    u8g2.setCursor(0, 64);
     u8g2.print(currentAltitude);
     u8g2.sendBuffer();
-
     _lastDisplayUpdate = currentMillis;
   }
 }
@@ -478,72 +439,115 @@ void freefallMode()
 
 void canopyMode()
 {
-  // static int _lastAction = 0;
-  // // REMOVE
-  // if (_lastAction == 0)
-  // {
-  //   _lastAction = currentMillis;
-  // }
-  // else if (_lastAction + 1000 < currentMillis)
-  // {
-  //   if (currentAltitude < 5)
-  //   {
-  //     debugMessage("DEMO: canopy ended -> groundMode");
-  //     changeModeTo(MODE_GROUND);
-  //   }
-  //   else
-  //   {
-  //     currentAltitude = currentAltitude - random(6, 12);
-  //   }
-  //   _lastAction = currentMillis;
-  // }
-  // // REMOVE
-
-  static int _fallRate = 0;
-  static unsigned long _lastAltitudeUpdate = currentMillis;
-  static int _lastAltitude = currentAltitude;
-  static unsigned long _timeDiff = 0;
-  static int _altitudeDiff = 0;
   static unsigned long _lastDisplayUpdate = 0;
-
-  if (_lastAltitudeUpdate + 1000 < currentMillis)
-  {
-    _timeDiff = (currentMillis - _lastAltitudeUpdate) / 1000;
-    _altitudeDiff = _lastAltitude - currentAltitude;
-    _fallRate = _altitudeDiff / _timeDiff;
-    _lastAltitudeUpdate = currentMillis;
-    _lastAltitude = currentAltitude;
-    debugMessage("Fallrate:");
-    debugMessage((String)_fallRate);
-  }
 
   // display
   if (_lastDisplayUpdate + 500 < currentMillis || _lastDisplayUpdate == 0)
   {
     u8g2.clearBuffer();
-
     u8g2.setFontDirection(0);
-    u8g2.setFont(u8g2_font_7Segments_26x42_mn);
-    u8g2.setCursor(0, 42);
+    u8g2.setFont(u8g2_font_logisoso50_tn);
+    u8g2.setCursor(0, 51);
     u8g2.print(currentAltitude);
-
     u8g2.setFont(u8g2_font_courR08_tf);
-    u8g2.setCursor(0, 60);
-    u8g2.print((String)_fallRate);
+    u8g2.setCursor(0, 64);
+    u8g2.print((String)currentAltitudeChangeRate);
     u8g2.print(" m/s");
     u8g2.sendBuffer();
 
     _lastDisplayUpdate = currentMillis;
   }
+
+  if (currentAltitude < 4 || currentAltitudeChangeRate < 2)
+  {
+    changeModeTo(MODE_GROUND);
+  }
 };
 
 /* -------------------------------------------------------------------------------------------------------- */
 
+typedef void (*function)();
+
+void firstFunction()
+{
+  // whatever
+  debugMessage("First function call");
+}
+
+void secondFunction()
+{
+  // whatever
+  debugMessage("Second function call");
+}
+
 void menuMode()
 {
-  if (buttonEnter.pressedFor(2000))
+  static byte _selectedItem = 0;
+  const String _menuItems[] = {"Dropzones", "Planes", "Update", "Item 4", "Item 5"};
+  const function arrayOfFunctions[] = {firstFunction, secondFunction};
+
+  static bool _displayNeedUpdate = true;
+  byte _numberOfItems = 5;
+
+  if (lastMode != mode)
   {
-    changeModeTo(MODE_GROUND);
+    _displayNeedUpdate = true;
+    lastMode = mode;
+  }
+  else
+  {
+
+    if (buttonDown.wasReleased() && _selectedItem < 4)
+    {
+      _selectedItem++;
+      _displayNeedUpdate = true;
+    }
+    if (buttonUp.wasReleased() && _selectedItem > 0)
+    {
+      _selectedItem--;
+      _displayNeedUpdate = true;
+    }
+    if (buttonEnter.wasPressed())
+    {
+      arrayOfFunctions[_selectedItem]();
+      _displayNeedUpdate = true;
+    }
+    else if (buttonEnter.pressedFor(2000))
+    {
+      changeModeTo(MODE_GROUND);
+    }
+  }
+
+  if (_displayNeedUpdate)
+  {
+
+    u8g2.clearBuffer();
+    u8g2.setFontDirection(0);
+    u8g2.setFont(u8g2_font_courR08_tf);
+    u8g2.setCursor(0, 8);
+    u8g2.print("Menu");
+    u8g2.drawHLine(0, 10, 128);
+
+    for (byte i = 0; i < _numberOfItems; i++)
+    {
+      if (i == 0)
+      {
+        u8g2.setCursor(0, 20);
+      }
+      else
+      {
+        u8g2.setCursor(0, 20 + (i * 10));
+      }
+
+      if (_selectedItem == i)
+      {
+        u8g2.print(">");
+      }
+      u8g2.print(_menuItems[i]);
+    }
+
+    u8g2.sendBuffer();
+    _displayNeedUpdate = false;
   }
 };
 
@@ -561,27 +565,27 @@ void setup()
   {
     Serial.begin(115200);
   }
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
   pressureSensor1.begin(0x76);
-  // pressureSensor2.begin(0x77);
+  pressureSensor2.begin(0x77);
+  u8g2.begin();
+  u8g2.enableUTF8Print();
+  u8g2.setFlipMode(1);
 
   esp_sleep_enable_timer_wakeup(sleepForTime * uS_TO_S_FACTOR);
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_32, 0);
-
   esp_sleep_wakeup_cause_t wakeup_reason;
   wakeup_reason = esp_sleep_get_wakeup_cause();
-
   if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
   {
     checkAltitudeAfterWakeup();
   }
 
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-
   debugMessage("Startdruck:");
   defaultPressure1 = pressureSensor1.readPressure() / 100;
-  // defaultPressure2 = pressureSensor2.readPressure() / 100;
+  defaultPressure2 = pressureSensor2.readPressure() / 100;
   debugMessage((String)defaultPressure1);
-  //debugMessage((String)defaultPressure2);
+  debugMessage((String)defaultPressure2);
   debugMessage("Starthöhe:");
   checkAltitude();
   debugMessage((String)currentAltitude);
@@ -589,10 +593,6 @@ void setup()
   buttonUp.begin();
   buttonDown.begin();
   buttonEnter.begin();
-
-  u8g2.begin();
-  u8g2.enableUTF8Print();
-  u8g2.setFlipMode(1);
 }
 
 /* -------------------------------------------------------------------------------------------------------- */
