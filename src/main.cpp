@@ -2,7 +2,7 @@
 #include <JC_Button.h> // https://github.com/JChristensen/JC_Button
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
-#include "Adafruit_BMP280.h"
+#include <Adafruit_BMP280.h>
 #include <RtcDS3231.h>
 #include <U8g2lib.h>
 #include <SPI.h>
@@ -24,8 +24,8 @@
 #define PIN_DISPLAY_CLOCK 18
 #define PIN_DISPLAY_DATA 23
 #define PIN_DISPLAY_CS 5
-#define PIN_DISPLAY_DC 14
-#define PIN_DISPLAY_RESET 12
+#define PIN_DISPLAY_DC 12
+#define PIN_DISPLAY_RESET 14
 
 #define PIN_BATTERY 35
 
@@ -56,7 +56,8 @@ const int timeCheckInterval = 1000;
 // define global variables
 bool debug = true; // debug mode? enables Serial Messages
 bool demo = false; // demo mode to disable actual altitude check
-byte mode = 3;     // current work mode
+bool buttonEnterActive = true;
+byte mode = 3; // current work mode
 byte lastMode = 254;
 unsigned long currentMillis = 0;
 
@@ -155,7 +156,7 @@ void checkAltitude()
   int altitude1;
   int altitude2;
 
-  if (lastAltiCheck + 200 < currentMillis)
+  if (lastAltiCheck + 200 < currentMillis || lastAltiCheck == 0)
   {
     altitude1 = pressureSensor1.readAltitude(defaultPressure1);
     altitude2 = pressureSensor2.readAltitude(defaultPressure2);
@@ -276,7 +277,10 @@ void displayBatteryLevel()
 // no -> sleep again
 void checkAltitudeAfterWakeup()
 {
+  checkAltitude();
   debugMessage("check alti after wakeup");
+  debugMessage((String)defaultPressure1);
+  debugMessage((String)defaultPressure2);
   debugMessage("current altitude");
   debugMessage((String)currentAltitude);
 
@@ -299,6 +303,11 @@ void groundMode()
   static unsigned long _groundTime = currentMillis;
   static unsigned long _lastDisplayUpdate = 0;
 
+  if (buttonEnter.isReleased() && !buttonEnterActive)
+  {
+    buttonEnterActive = true;
+  }
+
   if (mode != lastMode)
   {
     _groundTime = currentMillis;
@@ -307,8 +316,9 @@ void groundMode()
   else
   {
     // check Enter Button to enter Menu
-    if (buttonEnter.pressedFor(1000))
+    if (buttonEnter.pressedFor(1000) && buttonEnterActive)
     {
+      buttonEnterActive = false;
       changeModeTo(MODE_MENU); // change Mode to menuMode
     }
   }
@@ -458,7 +468,7 @@ void canopyMode()
     _lastDisplayUpdate = currentMillis;
   }
 
-  if (currentAltitude < 4 || currentAltitudeChangeRate < 2)
+  if (currentAltitude < 4)
   {
     changeModeTo(MODE_GROUND);
   }
@@ -489,6 +499,11 @@ void menuMode()
   static bool _displayNeedUpdate = true;
   byte _numberOfItems = 5;
 
+  if (buttonEnter.isReleased() && !buttonEnterActive)
+  {
+    buttonEnterActive = true;
+  }
+
   if (lastMode != mode)
   {
     _displayNeedUpdate = true;
@@ -512,8 +527,9 @@ void menuMode()
       arrayOfFunctions[_selectedItem]();
       _displayNeedUpdate = true;
     }
-    else if (buttonEnter.pressedFor(2000))
+    else if (buttonEnterActive && buttonEnter.pressedFor(2000))
     {
+      buttonEnterActive = false;
       changeModeTo(MODE_GROUND);
     }
   }
@@ -570,7 +586,7 @@ void setup()
   pressureSensor2.begin(0x77);
   u8g2.begin();
   u8g2.enableUTF8Print();
-  u8g2.setFlipMode(1);
+  u8g2.setFlipMode(0);
 
   esp_sleep_enable_timer_wakeup(sleepForTime * uS_TO_S_FACTOR);
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_32, 0);
@@ -593,6 +609,10 @@ void setup()
   buttonUp.begin();
   buttonDown.begin();
   buttonEnter.begin();
+  debugMessage("Uhrzeit:");
+  RtcDateTime now_test;
+  now_test = rtc.GetDateTime();
+  debugMessage((String)now_test);
 }
 
 /* -------------------------------------------------------------------------------------------------------- */
